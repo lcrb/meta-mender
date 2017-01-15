@@ -112,8 +112,6 @@ IMAGE_CMD_sdimg() {
     ln -sf ${WORKDIR}/rootfs.$FSTYPE ${WORKDIR}/active
     ln -sf ${WORKDIR}/rootfs.$FSTYPE ${WORKDIR}/inactive
 
-    MENDER_PARTITION_ALIGNMENT_KB=$(expr ${MENDER_PARTITION_ALIGNMENT_MB} \* 1024)
-
     rm -rf "${WORKDIR}/data" || true
     mkdir -p "${WORKDIR}/data"
 
@@ -165,10 +163,10 @@ IMAGE_CMD_sdimg() {
     rm -f "$wks"
 
     cat >> "$wks" <<EOF
-part /boot   --source fsimage --sourceparams=file="${WORKDIR}/boot.img" --ondisk mmcblk0 --fstype=vfat --label boot --align $MENDER_PARTITION_ALIGNMENT_KB --active 
-part /       --source fsimage --sourceparams=file="${WORKDIR}/active" --ondisk mmcblk0 --label primary --align $MENDER_PARTITION_ALIGNMENT_KB
-part         --source fsimage --sourceparams=file="${WORKDIR}/inactive" --ondisk mmcblk0 --label secondary --align $MENDER_PARTITION_ALIGNMENT_KB
-part /data   --source fsimage --sourceparams=file="${WORKDIR}/data.$FSTYPE" --ondisk mmcblk0 --fstype=$FSTYPE --label data --align $MENDER_PARTITION_ALIGNMENT_KB
+part /boot   --source fsimage --sourceparams=file="${WORKDIR}/boot.img" --ondisk mmcblk0 --fstype=vfat --label boot --align ${MENDER_PARTITION_ALIGNMENT_KB} --active 
+part /       --source fsimage --sourceparams=file="${WORKDIR}/active" --ondisk mmcblk0 --label primary --align ${MENDER_PARTITION_ALIGNMENT_KB}
+part         --source fsimage --sourceparams=file="${WORKDIR}/inactive" --ondisk mmcblk0 --label secondary --align ${MENDER_PARTITION_ALIGNMENT_KB}
+part /data   --source fsimage --sourceparams=file="${WORKDIR}/data.$FSTYPE" --ondisk mmcblk0 --fstype=$FSTYPE --label data --align ${MENDER_PARTITION_ALIGNMENT_KB}
 EOF
 
     echo "### Contents of wks file ###"
