@@ -32,6 +32,8 @@ IMAGE_UENV_TXT_FILE ?= ""
 
 IMAGE_BOOT_FILES_append = " ${IMAGE_UENV_TXT_FILE}"
 
+IMAGE_BOOT_BLOCKS ?= "20480"
+
 # make sure to provide a weak default
 UBOOT_SUFFIX ??= "bin"
 
@@ -130,37 +132,40 @@ IMAGE_CMD_sdimg() {
     dd if=/dev/zero of="${WORKDIR}/data.$FSTYPE" count=0 bs=1M seek=${MENDER_DATA_PART_SIZE_MB}
     mkfs.$FSTYPE -F "${WORKDIR}/data.$FSTYPE" -d "${WORKDIR}/data"
 
+    rm -f ${WORKDIR}/boot.img
+    echo "IMAGE_BOOT_BLOCKS ${IMAGE_BOOT_BLOCKS}"
+    mkfs.vfat -n "${BOOTDD_VOLUME_ID}" -S 512 -C ${WORKDIR}/boot.img ${IMAGE_BOOT_BLOCKS}
+
+    mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}-${MACHINE}.bin ::uImage
+
+    # Copy device tree file
+    if test -n "${KERNEL_DEVICETREE}"; then
+        for DTS_FILE in ${KERNEL_DEVICETREE}; do
+            DTS_BASE_NAME=`basename ${DTS_FILE} | awk -F "." '{print $1}'`
+            if [ -e ${DEPLOY_DIR_IMAGE}/"${KERNEL_IMAGETYPE}-${DTS_BASE_NAME}.dtb" ]; then
+                kernel_bin="`readlink ${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}-${MACHINE}.bin`"
+                kernel_bin_for_dtb="`readlink ${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}-${DTS_BASE_NAME}.dtb | sed "s,$DTS_BASE_NAME,${MACHINE},g;s,\.dtb$,.bin,g"`"
+                if [ $kernel_bin = $kernel_bin_for_dtb ]; then
+                    mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/${KERNEL_IMAGETYPE}-${DTS_BASE_NAME}.dtb ::/${DTS_BASE_NAME}.dtb
+                fi
+            fi
+        done
+    fi
+
+    if [ -e "${DEPLOY_DIR_IMAGE}/fex.bin" ]
+    then
+        mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/fex.bin ::script.bin
+    fi
+    if [ -e "${DEPLOY_DIR_IMAGE}/boot.scr" ]
+    then
+        mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/boot.scr ::boot.scr
+    fi
+
     wks="${WORKDIR}/mender-sdimg.wks"
     rm -f "$wks"
-    if [ -n "${IMAGE_BOOTLOADER_FILE}" ]; then
-        if [ $(expr ${IMAGE_BOOTLOADER_BOOTSECTOR_OFFSET} % 2) -ne 0 ]; then
-            bbfatal "IMAGE_BOOTLOADER_BOOTSECTOR_OFFSET must be aligned to kB" \
-                    "boundary (an even number)."
-        fi
-        bootloader_align_kb=$(expr $(expr ${IMAGE_BOOTLOADER_BOOTSECTOR_OFFSET} \* 512) / 1024)
-        bootloader_size=$(stat -c '%s' "${DEPLOY_DIR_IMAGE}/${IMAGE_BOOTLOADER_FILE}")
-        bootloader_end=$(expr $bootloader_align_kb \* 1024 + $bootloader_size)
-        if [ $bootloader_end -gt ${MENDER_UBOOT_ENV_STORAGE_DEVICE_OFFSET} ]; then
-            bberror "Size of bootloader specified in IMAGE_BOOTLOADER_FILE" \
-                    "exceeds MENDER_UBOOT_ENV_STORAGE_DEVICE_OFFSET, which is" \
-                    "reserved for U-Boot environment storage. Please raise it" \
-                    "manually."
-        fi
-        cat >> "$wks" <<EOF
-# embed bootloader
-part --source rawcopy --sourceparams="file=${DEPLOY_DIR_IMAGE}/${IMAGE_BOOTLOADER_FILE}" --ondisk mmcblk0 --align $bootloader_align_kb --no-table
-EOF
-    fi
-
-    if [ -n "${MENDER_UBOOT_ENV_STORAGE_DEVICE_OFFSET}" ]; then
-        boot_env_align_kb=$(expr ${MENDER_UBOOT_ENV_STORAGE_DEVICE_OFFSET} / 1024)
-        cat >> "$wks" <<EOF
-part --source rawcopy --sourceparams="file=${DEPLOY_DIR_IMAGE}/uboot.env" --ondisk mmcblk0 --align $boot_env_align_kb --no-table
-EOF
-    fi
 
     cat >> "$wks" <<EOF
-part /boot   --source bootimg-partition --ondisk mmcblk0 --fstype=vfat --label boot --align $MENDER_PARTITION_ALIGNMENT_KB --active --size ${MENDER_BOOT_PART_SIZE_MB}
+part /boot   --source fsimage --sourceparams=file="${WORKDIR}/boot.img" --ondisk mmcblk0 --fstype=vfat --label boot --align $MENDER_PARTITION_ALIGNMENT_KB --active 
 part /       --source fsimage --sourceparams=file="${WORKDIR}/active" --ondisk mmcblk0 --label primary --align $MENDER_PARTITION_ALIGNMENT_KB
 part         --source fsimage --sourceparams=file="${WORKDIR}/inactive" --ondisk mmcblk0 --label secondary --align $MENDER_PARTITION_ALIGNMENT_KB
 part /data   --source fsimage --sourceparams=file="${WORKDIR}/data.$FSTYPE" --ondisk mmcblk0 --fstype=$FSTYPE --label data --align $MENDER_PARTITION_ALIGNMENT_KB
@@ -176,6 +181,8 @@ EOF
     BUILDDIR="${TOPDIR}" wic create "$wks" --vars "${STAGING_DIR_TARGET}/imgdata/" -e "${IMAGE_BASENAME}" -o "$wicout/" ${WIC_CREATE_EXTRA_ARGS}
     mv "$wicout/build/$(basename "${wks%.wks}")"*.direct "$outimgname"
     rm -rf "$wicout/"
+
+    dd if="${DEPLOY_DIR_IMAGE}/u-boot-sunxi-with-spl.bin" of="${DEPLOY_DIR_IMAGE}/${IMAGE_BASENAME}-${MACHINE}.sdimg" bs=1024 seek=8 conv=notrunc
 
     ln -sfn "${IMAGE_NAME}.sdimg" "${DEPLOY_DIR_IMAGE}/${IMAGE_BASENAME}-${MACHINE}.sdimg"
 }
