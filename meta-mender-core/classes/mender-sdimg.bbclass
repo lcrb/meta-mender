@@ -154,6 +154,7 @@ IMAGE_CMD_sdimg() {
     then
         mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/fex.bin ::script.bin
     fi
+
     if [ -e "${DEPLOY_DIR_IMAGE}/boot.scr" ]
     then
         mcopy -i ${WORKDIR}/boot.img -s ${DEPLOY_DIR_IMAGE}/boot.scr ::boot.scr
@@ -180,7 +181,7 @@ EOF
     mv "$wicout/build/$(basename "${wks%.wks}")"*.direct "$outimgname"
     rm -rf "$wicout/"
 
-    dd if="${DEPLOY_DIR_IMAGE}/u-boot-sunxi-with-spl.bin" of="${DEPLOY_DIR_IMAGE}/${IMAGE_BASENAME}-${MACHINE}.sdimg" bs=1024 seek=8 conv=notrunc
+    dd if="${DEPLOY_DIR_IMAGE}/u-boot-sunxi-with-spl.bin" of="${IMAGE_NAME}" bs=1024 seek=8 conv=notrunc
 
     ln -sfn "${IMAGE_NAME}.sdimg" "${DEPLOY_DIR_IMAGE}/${IMAGE_BASENAME}-${MACHINE}.sdimg"
 }
